@@ -1,4 +1,4 @@
--- Script Mod Menu Mejorado - Versión 3.0 (Hitbox Expander + Auto Shoot)
+-- Script Mod Menu Mejorado - Versión 3.1 (Drag mejorado y panel movible por título)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -19,7 +19,7 @@ local aimFOV = 60
 local teamColor = Color3.fromRGB(0, 150, 255)
 local enemyColor = Color3.fromRGB(255, 0, 0)
 local antennas = {}
-local hitboxParts = {}  -- almacena las esferas de hitbox por jugador
+local hitboxParts = {}
 
 -- ==================== FUNCIONES AUXILIARES ====================
 local function isEnemy(player)
@@ -48,12 +48,10 @@ local function getClosestEnemy()
     return best
 end
 
--- Disparo automático (simula el uso del arma actual)
 local function autoShoot()
     if not autoShootOn then return end
     local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
     if tool then
-        -- Intenta activar el arma
         if tool:FindFirstChild("Activate") then
             tool:Activate()
         elseif tool:FindFirstChild("Fire") then
@@ -61,7 +59,6 @@ local function autoShoot()
         elseif tool:FindFirstChild("RemoteEvent") then
             tool.RemoteEvent:FireServer()
         else
-            -- Simula un clic del mouse como último recurso
             local mouse = LocalPlayer:GetMouse()
             if mouse then
                 mouse.Button1Click:Fire()
@@ -228,8 +225,7 @@ local function toggleNoCooldown(state)
     end
 end
 
--- ==================== HITBOX EXPANDER (con redirección de balas) ====================
--- Crea una esfera alrededor del enemigo que redirige balas hacia él
+-- ==================== HITBOX EXPANDER ====================
 local function createHitbox(plr)
     if not plr.Character or hitboxParts[plr] then return end
     local torso = plr.Character:FindFirstChild("UpperTorso") or plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("HumanoidRootPart")
@@ -237,7 +233,7 @@ local function createHitbox(plr)
 
     local sphere = Instance.new("Part")
     sphere.Name = "HitboxExpander"
-    sphere.Size = Vector3.new(8, 8, 8)  -- radio 4
+    sphere.Size = Vector3.new(8, 8, 8)
     sphere.Shape = Enum.PartType.Ball
     sphere.Material = Enum.Material.Neon
     sphere.Color = isEnemy(plr) and enemyColor or teamColor
@@ -276,26 +272,20 @@ local function updateHitboxes()
     end
 end
 
--- Redirección de balas (proyectiles tipo parte)
 local function redirectBullets()
     if not hitboxOn then return end
-
-    -- Busca balas: partes con velocidad y que no pertenezcan a personajes
     for _, bullet in ipairs(workspace:GetDescendants()) do
         if bullet:IsA("Part") and bullet:FindFirstChild("Velocity") and not bullet:IsDescendantOf(LocalPlayer.Character) then
             local vel = bullet.Velocity
-            if vel.Magnitude > 50 then  -- algo que se mueve rápido
-                -- Verificar si está dentro de alguna hitbox
+            if vel.Magnitude > 50 then
                 for plr, sphere in pairs(hitboxParts) do
                     if sphere and sphere:IsDescendantOf(workspace) then
                         local distance = (bullet.Position - sphere.Position).Magnitude
                         if distance <= sphere.Size.X / 2 then
-                            -- Redirigir al enemigo (apuntar a la cabeza)
                             local target = plr.Character and plr.Character:FindFirstChild("Head")
                             if target then
                                 local direction = (target.Position - bullet.Position).Unit
                                 bullet.Velocity = direction * vel.Magnitude
-                                -- Opcional: forzar impacto instantáneo
                                 bullet.CFrame = CFrame.new(bullet.Position, target.Position)
                             end
                             break
@@ -315,7 +305,7 @@ local function createInterface()
     screenGui.ResetOnSpawn = false
     screenGui.Parent = playerGui
 
-    -- Botón central
+    -- Botón central (arrastrable desde cualquier parte)
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0, 70, 0, 70)
     toggleBtn.Position = UDim2.new(0.5, -35, 0.5, -35)
@@ -334,7 +324,7 @@ local function createInterface()
 
     -- Panel
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.new(0, 300, 0, 500)  -- más alto por nuevo botón
+    panel.Size = UDim2.new(0, 300, 0, 500)
     panel.Position = UDim2.new(0.5, -150, 0.5, -250)
     panel.AnchorPoint = Vector2.new(0.5, 0.5)
     panel.BackgroundColor3 = Color3.fromRGB(22, 22, 35)
@@ -347,14 +337,46 @@ local function createInterface()
     panelCorner.CornerRadius = UDim.new(0, 16)
     panelCorner.Parent = panel
 
+    -- Barra de título (arrastrable)
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 50)
+    titleBar.BackgroundColor3 = Color3.fromRGB(22, 22, 35)
+    titleBar.BackgroundTransparency = 0.5
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = panel
+
+    local titleBarCorner = Instance.new("UICorner")
+    titleBarCorner.CornerRadius = UDim.new(0, 16)
+    titleBarCorner.Parent = titleBar
+
     local title = Instance.new("TextLabel")
-    title.Size = UDim2.new(1, 0, 0, 50)
+    title.Size = UDim2.new(1, 0, 1, 0)
     title.BackgroundTransparency = 1
     title.Text = "MOD MENU"
     title.TextColor3 = Color3.fromRGB(0, 255, 200)
     title.TextSize = 22
     title.Font = Enum.Font.GothamBold
-    title.Parent = panel
+    title.Parent = titleBar
+
+    -- Cerrar
+    local closeBtn = Instance.new("TextButton")
+    closeBtn.Size = UDim2.new(0, 40, 0, 40)
+    closeBtn.Position = UDim2.new(1, -50, 0, 8)
+    closeBtn.Text = "✕"
+    closeBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.TextSize = 20
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.BorderSizePixel = 0
+    closeBtn.Parent = panel
+
+    local closeCorner = Instance.new("UICorner")
+    closeCorner.CornerRadius = UDim.new(1, 0)
+    closeCorner.Parent = closeBtn
+
+    closeBtn.MouseButton1Click:Connect(function()
+        panel.Visible = false
+    end)
 
     local function makeSectionButton(text, icon, y, stateVar, callback)
         local btn = Instance.new("TextButton")
@@ -392,21 +414,17 @@ local function createInterface()
         return btn
     end
 
-    -- Botones existentes
     makeSectionButton("ESP", "👁️", 60, espOn, updateESP)
     makeSectionButton("Aimbot", "🎯", 115, aimOn, function(state) setPOVVisible(state) end)
     makeSectionButton("Antena", "📡", 170, antennaOn, updateAntennas)
     makeSectionButton("Auto Disparo", "🔫", 225, autoShootOn, nil)
     makeSectionButton("Anti-Lag", "⚡", 280, antiLagOn, setAntiLag)
     makeSectionButton("No Cooldown", "♾️", 335, noCooldownOn, toggleNoCooldown)
-
-    -- NUEVO: Hitbox Expander
     makeSectionButton("Hitbox Expander", "🎯", 390, hitboxOn, function(state)
         hitboxOn = state
         updateHitboxes()
     end)
 
-    -- Botón Rejoin (solo para Jxmena67)
     if LocalPlayer.Name == "Jxmena67" then
         local rejoinBtn = Instance.new("TextButton")
         rejoinBtn.Size = UDim2.new(0, 260, 0, 40)
@@ -432,33 +450,14 @@ local function createInterface()
     versionLabel.Size = UDim2.new(1, 0, 0, 30)
     versionLabel.Position = UDim2.new(0, 0, 1, -35)
     versionLabel.BackgroundTransparency = 1
-    versionLabel.Text = "Versión 3.0"
+    versionLabel.Text = "Versión 3.1"
     versionLabel.TextColor3 = Color3.fromRGB(100, 100, 120)
     versionLabel.TextSize = 13
     versionLabel.Font = Enum.Font.Gotham
     versionLabel.Parent = panel
 
-    -- Cerrar
-    local closeBtn = Instance.new("TextButton")
-    closeBtn.Size = UDim2.new(0, 40, 0, 40)
-    closeBtn.Position = UDim2.new(1, -50, 0, 8)
-    closeBtn.Text = "✕"
-    closeBtn.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
-    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-    closeBtn.TextSize = 20
-    closeBtn.Font = Enum.Font.GothamBold
-    closeBtn.BorderSizePixel = 0
-    closeBtn.Parent = panel
-
-    local closeCorner = Instance.new("UICorner")
-    closeCorner.CornerRadius = UDim.new(1, 0)
-    closeCorner.Parent = closeBtn
-
-    closeBtn.MouseButton1Click:Connect(function()
-        panel.Visible = false
-    end)
-
     -- ==================== DRAG MEJORADO ====================
+    -- Drag para la bolita
     local draggingBtn = false
     local dragStartBtn, startPosBtn
 
@@ -476,10 +475,11 @@ local function createInterface()
         end
     end)
 
+    -- Drag para el panel (SOLO por la barra de título)
     local draggingPanel = false
     local dragStartPanel, startPosPanel
 
-    panel.InputBegan:Connect(function(input)
+    titleBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             draggingPanel = true
             dragStartPanel = input.Position
@@ -487,10 +487,18 @@ local function createInterface()
         end
     end)
 
-    panel.InputEnded:Connect(function(input)
+    titleBar.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             draggingPanel = false
         end
+    end)
+
+    -- Efecto visual en la barra de título
+    titleBar.MouseEnter:Connect(function()
+        titleBar.BackgroundTransparency = 0.2
+    end)
+    titleBar.MouseLeave:Connect(function()
+        titleBar.BackgroundTransparency = 0.5
     end)
 
     UserInputService.InputChanged:Connect(function(input)
@@ -515,7 +523,7 @@ local function start()
     createInterface()
     createPOV()
     RunService.RenderStepped:Connect(aimbotUpdate)
-    RunService.Heartbeat:Connect(redirectBullets)  -- redirección continua
+    RunService.Heartbeat:Connect(redirectBullets)
 
     Players.PlayerAdded:Connect(function(p)
         p.CharacterAdded:Connect(function()
@@ -531,7 +539,7 @@ local function start()
         destroyHitbox(p)
     end)
 
-    print("✅ Mod Menu v3.0 cargado - Hitbox Expander + Auto Shoot funcional")
+    print("✅ Mod Menu v3.1 cargado - Drag mejorado (bolita + panel por título)")
 end
 
 start()
