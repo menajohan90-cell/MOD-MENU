@@ -1,4 +1,4 @@
--- Script Mod Menu Mejorado - Versión 2.5 (No Cooldown agregado)
+-- Script Mod Menu Mejorado - Versión 3.0 (Hitbox Expander + Auto Shoot)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -13,13 +13,15 @@ local antennaOn = false
 local autoShootOn = false
 local antiLagOn = false
 local noCooldownOn = false
+local hitboxOn = false
 local aimFOV = 60
 
 local teamColor = Color3.fromRGB(0, 150, 255)
 local enemyColor = Color3.fromRGB(255, 0, 0)
 local antennas = {}
+local hitboxParts = {}  -- almacena las esferas de hitbox por jugador
 
--- ==================== FUNCIONES ORIGINALES ====================
+-- ==================== FUNCIONES AUXILIARES ====================
 local function isEnemy(player)
     if player == LocalPlayer then return false end
     if not LocalPlayer.Team or not player.Team then return true end
@@ -46,6 +48,29 @@ local function getClosestEnemy()
     return best
 end
 
+-- Disparo automático (simula el uso del arma actual)
+local function autoShoot()
+    if not autoShootOn then return end
+    local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+    if tool then
+        -- Intenta activar el arma
+        if tool:FindFirstChild("Activate") then
+            tool:Activate()
+        elseif tool:FindFirstChild("Fire") then
+            tool:Fire()
+        elseif tool:FindFirstChild("RemoteEvent") then
+            tool.RemoteEvent:FireServer()
+        else
+            -- Simula un clic del mouse como último recurso
+            local mouse = LocalPlayer:GetMouse()
+            if mouse then
+                mouse.Button1Click:Fire()
+            end
+        end
+    end
+end
+
+-- ==================== ESP ====================
 local function updateESP()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character then
@@ -69,6 +94,7 @@ local function updateESP()
     end
 end
 
+-- ==================== ANTENA ====================
 local function createAntenna(plr)
     if not plr.Character or antennas[plr] then return end
     local head = plr.Character:FindFirstChild("Head")
@@ -125,22 +151,45 @@ local function updateAntennas()
     end
 end
 
+-- ==================== AIMBOT ====================
 local function aimbotUpdate()
     if not aimOn then return end
     local target = getClosestEnemy()
     if target and target:FindFirstChild("Head") then
         Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Head.Position)
         if autoShootOn then
-            print("[AUTO] Disparando a", target.Parent.Name)
+            autoShoot()
         end
     end
 end
 
+-- ==================== POV ====================
 local povGui = nil
 local function setPOVVisible(visible)
     if povGui then povGui.Enabled = visible end
 end
 
+local function createPOV()
+    local gui = Instance.new("ScreenGui")
+    gui.Name = "POVCircle"
+    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    local circle = Instance.new("Frame")
+    circle.Name = "Circle"
+    circle.Size = UDim2.new(0, aimFOV * 2, 0, aimFOV * 2)
+    circle.Position = UDim2.new(0.5, -aimFOV, 0.5, -aimFOV)
+    circle.BackgroundTransparency = 1
+    circle.BorderSizePixel = 2
+    circle.BorderColor3 = Color3.fromRGB(255, 255, 255)
+    circle.BackgroundTransparency = 0.85
+    local uic = Instance.new("UICorner")
+    uic.CornerRadius = UDim.new(1, 0)
+    uic.Parent = circle
+    circle.Parent = gui
+    povGui = gui
+    setPOVVisible(false)
+end
+
+-- ==================== ANTI-LAG ====================
 local originalShadows
 local function setAntiLag(state)
     if state then
@@ -151,45 +200,114 @@ local function setAntiLag(state)
     end
 end
 
--- ==================== NUEVA FUNCIÓN: NO COOLDOWN ====================
+-- ==================== NO COOLDOWN ====================
 local noCooldownConnection = nil
-
 local function toggleNoCooldown(state)
     noCooldownOn = state
-
     if state then
         if noCooldownConnection then noCooldownConnection:Disconnect() end
-        
         noCooldownConnection = RunService.Heartbeat:Connect(function()
             if LocalPlayer.Character then
                 local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
                 if tool then
-                    local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart")
-                    if handle then
-                        -- Intento de remover cooldown en muchas herramientas
-                        for _, v in pairs(tool:GetDescendants()) do
-                            if v:IsA("NumberValue") or v:IsA("IntValue") then
-                                if v.Name:lower():find("cooldown") or v.Name:lower():find("delay") or v.Name:lower():find("reload") then
-                                    v.Value = 0
-                                end
+                    for _, v in pairs(tool:GetDescendants()) do
+                        if v:IsA("NumberValue") or v:IsA("IntValue") then
+                            if v.Name:lower():find("cooldown") or v.Name:lower():find("delay") or v.Name:lower():find("reload") then
+                                v.Value = 0
                             end
                         end
                     end
                 end
             end
         end)
-        
-        print("No Cooldown Activado")
     else
         if noCooldownConnection then
             noCooldownConnection:Disconnect()
             noCooldownConnection = nil
         end
-        print("No Cooldown Desactivado")
     end
 end
 
--- ==================== INTERFAZ ====================
+-- ==================== HITBOX EXPANDER (con redirección de balas) ====================
+-- Crea una esfera alrededor del enemigo que redirige balas hacia él
+local function createHitbox(plr)
+    if not plr.Character or hitboxParts[plr] then return end
+    local torso = plr.Character:FindFirstChild("UpperTorso") or plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("HumanoidRootPart")
+    if not torso then return end
+
+    local sphere = Instance.new("Part")
+    sphere.Name = "HitboxExpander"
+    sphere.Size = Vector3.new(8, 8, 8)  -- radio 4
+    sphere.Shape = Enum.PartType.Ball
+    sphere.Material = Enum.Material.Neon
+    sphere.Color = isEnemy(plr) and enemyColor or teamColor
+    sphere.Transparency = 0.5
+    sphere.CanCollide = false
+    sphere.Anchored = true
+    sphere.Parent = plr.Character
+
+    local weld = Instance.new("Weld")
+    weld.Part0 = torso
+    weld.Part1 = sphere
+    weld.C0 = CFrame.new(0, 0, 0)
+    weld.Parent = sphere
+
+    hitboxParts[plr] = sphere
+end
+
+local function destroyHitbox(plr)
+    if hitboxParts[plr] then
+        hitboxParts[plr]:Destroy()
+        hitboxParts[plr] = nil
+    end
+end
+
+local function updateHitboxes()
+    if not hitboxOn then
+        for plr, _ in pairs(hitboxParts) do destroyHitbox(plr) end
+        return
+    end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and isEnemy(plr) then
+            createHitbox(plr)
+        else
+            destroyHitbox(plr)
+        end
+    end
+end
+
+-- Redirección de balas (proyectiles tipo parte)
+local function redirectBullets()
+    if not hitboxOn then return end
+
+    -- Busca balas: partes con velocidad y que no pertenezcan a personajes
+    for _, bullet in ipairs(workspace:GetDescendants()) do
+        if bullet:IsA("Part") and bullet:FindFirstChild("Velocity") and not bullet:IsDescendantOf(LocalPlayer.Character) then
+            local vel = bullet.Velocity
+            if vel.Magnitude > 50 then  -- algo que se mueve rápido
+                -- Verificar si está dentro de alguna hitbox
+                for plr, sphere in pairs(hitboxParts) do
+                    if sphere and sphere:IsDescendantOf(workspace) then
+                        local distance = (bullet.Position - sphere.Position).Magnitude
+                        if distance <= sphere.Size.X / 2 then
+                            -- Redirigir al enemigo (apuntar a la cabeza)
+                            local target = plr.Character and plr.Character:FindFirstChild("Head")
+                            if target then
+                                local direction = (target.Position - bullet.Position).Unit
+                                bullet.Velocity = direction * vel.Magnitude
+                                -- Opcional: forzar impacto instantáneo
+                                bullet.CFrame = CFrame.new(bullet.Position, target.Position)
+                            end
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- ==================== INTERFAZ CON DRAG MEJORADO ====================
 local function createInterface()
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
     local screenGui = Instance.new("ScreenGui")
@@ -197,6 +315,7 @@ local function createInterface()
     screenGui.ResetOnSpawn = false
     screenGui.Parent = playerGui
 
+    -- Botón central
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0, 70, 0, 70)
     toggleBtn.Position = UDim2.new(0.5, -35, 0.5, -35)
@@ -213,9 +332,10 @@ local function createInterface()
     btnCorner.CornerRadius = UDim.new(1, 0)
     btnCorner.Parent = toggleBtn
 
+    -- Panel
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.new(0, 300, 0, 450)
-    panel.Position = UDim2.new(0.5, -150, 0.5, -200)
+    panel.Size = UDim2.new(0, 300, 0, 500)  -- más alto por nuevo botón
+    panel.Position = UDim2.new(0.5, -150, 0.5, -250)
     panel.AnchorPoint = Vector2.new(0.5, 0.5)
     panel.BackgroundColor3 = Color3.fromRGB(22, 22, 35)
     panel.BackgroundTransparency = 0.05
@@ -272,18 +392,25 @@ local function createInterface()
         return btn
     end
 
+    -- Botones existentes
     makeSectionButton("ESP", "👁️", 60, espOn, updateESP)
-    makeSectionButton("Aimbot", "🎯", 115, aimOn, function() setPOVVisible(aimOn) end)
+    makeSectionButton("Aimbot", "🎯", 115, aimOn, function(state) setPOVVisible(state) end)
     makeSectionButton("Antena", "📡", 170, antennaOn, updateAntennas)
     makeSectionButton("Auto Disparo", "🔫", 225, autoShootOn, nil)
-    makeSectionButton("Anti-Lag", "⚡", 280, antiLagOn, function(state) setAntiLag(state) end)
-    makeSectionButton("No Cooldown", "♾️", 335, noCooldownOn, toggleNoCooldown)   -- Nuevo botón
+    makeSectionButton("Anti-Lag", "⚡", 280, antiLagOn, setAntiLag)
+    makeSectionButton("No Cooldown", "♾️", 335, noCooldownOn, toggleNoCooldown)
 
-    -- Rejoin solo para Jxmena67
+    -- NUEVO: Hitbox Expander
+    makeSectionButton("Hitbox Expander", "🎯", 390, hitboxOn, function(state)
+        hitboxOn = state
+        updateHitboxes()
+    end)
+
+    -- Botón Rejoin (solo para Jxmena67)
     if LocalPlayer.Name == "Jxmena67" then
         local rejoinBtn = Instance.new("TextButton")
         rejoinBtn.Size = UDim2.new(0, 260, 0, 40)
-        rejoinBtn.Position = UDim2.new(0, 20, 0, 390)
+        rejoinBtn.Position = UDim2.new(0, 20, 0, 445)
         rejoinBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
         rejoinBtn.Text = "🔄 Rejoin Server"
         rejoinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -305,7 +432,7 @@ local function createInterface()
     versionLabel.Size = UDim2.new(1, 0, 0, 30)
     versionLabel.Position = UDim2.new(0, 0, 1, -35)
     versionLabel.BackgroundTransparency = 1
-    versionLabel.Text = "Versión 2.5"
+    versionLabel.Text = "Versión 3.0"
     versionLabel.TextColor3 = Color3.fromRGB(100, 100, 120)
     versionLabel.TextSize = 13
     versionLabel.Font = Enum.Font.Gotham
@@ -331,9 +458,9 @@ local function createInterface()
         panel.Visible = false
     end)
 
-    -- Drag (mantener clic)
-    local draggingBtn, draggingPanel = false, false
-    local dragStartBtn, startPosBtn, dragStartPanel, startPosPanel
+    -- ==================== DRAG MEJORADO ====================
+    local draggingBtn = false
+    local dragStartBtn, startPosBtn
 
     toggleBtn.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -344,8 +471,13 @@ local function createInterface()
     end)
 
     toggleBtn.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingBtn = false end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            draggingBtn = false
+        end
     end)
+
+    local draggingPanel = false
+    local dragStartPanel, startPosPanel
 
     panel.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -356,7 +488,9 @@ local function createInterface()
     end)
 
     panel.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingPanel = false end
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            draggingPanel = false
+        end
     end)
 
     UserInputService.InputChanged:Connect(function(input)
@@ -364,6 +498,7 @@ local function createInterface()
             local delta = input.Position - dragStartBtn
             toggleBtn.Position = UDim2.new(startPosBtn.X.Scale, startPosBtn.X.Offset + delta.X, startPosBtn.Y.Scale, startPosBtn.Y.Offset + delta.Y)
         end
+
         if draggingPanel and input.UserInputType == Enum.UserInputType.MouseMovement then
             local delta = input.Position - dragStartPanel
             panel.Position = UDim2.new(startPosPanel.X.Scale, startPosPanel.X.Offset + delta.X, startPosPanel.Y.Scale, startPosPanel.Y.Offset + delta.Y)
@@ -375,42 +510,28 @@ local function createInterface()
     end)
 end
 
-local function createPOV()
-    local gui = Instance.new("ScreenGui")
-    gui.Name = "POVCircle"
-    gui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-    local circle = Instance.new("Frame")
-    circle.Name = "Circle"
-    circle.Size = UDim2.new(0, aimFOV * 2, 0, aimFOV * 2)
-    circle.Position = UDim2.new(0.5, -aimFOV, 0.5, -aimFOV)
-    circle.BackgroundTransparency = 1
-    circle.BorderSizePixel = 2
-    circle.BorderColor3 = Color3.fromRGB(255, 255, 255)
-    circle.BackgroundTransparency = 0.85
-    local uic = Instance.new("UICorner")
-    uic.CornerRadius = UDim.new(1, 0)
-    uic.Parent = circle
-    circle.Parent = gui
-    povGui = gui
-    setPOVVisible(false)
-end
-
+-- ==================== INICIO ====================
 local function start()
     createInterface()
     createPOV()
     RunService.RenderStepped:Connect(aimbotUpdate)
+    RunService.Heartbeat:Connect(redirectBullets)  -- redirección continua
 
     Players.PlayerAdded:Connect(function(p)
         p.CharacterAdded:Connect(function()
             task.wait(0.8)
             if espOn then updateESP() end
             if antennaOn then updateAntennas() end
+            if hitboxOn then updateHitboxes() end
         end)
     end)
 
-    Players.PlayerRemoving:Connect(destroyAntenna)
+    Players.PlayerRemoving:Connect(function(p)
+        destroyAntenna(p)
+        destroyHitbox(p)
+    end)
 
-    print("✅ Mod Menu v2.5 cargado - No Cooldown agregado")
+    print("✅ Mod Menu v3.0 cargado - Hitbox Expander + Auto Shoot funcional")
 end
 
 start()
