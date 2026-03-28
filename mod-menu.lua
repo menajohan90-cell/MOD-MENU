@@ -1,4 +1,4 @@
--- Script Mod Menu Mejorado - Versión con Panel Central y Estilo Ring
+-- Script Mod Menu Mejorado - Versión 2.1 (Panel movible + Verde ON)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -18,10 +18,9 @@ local aimFOV = 60
 local teamColor = Color3.fromRGB(0, 150, 255)
 local enemyColor = Color3.fromRGB(255, 0, 0)
 
--- Diccionario para antenas
 local antennas = {}
 
--- Funciones auxiliares (NO se tocaron)
+-- ==================== FUNCIONES ORIGINALES (NO SE TOCARON) ====================
 local function isEnemy(player)
     if player == LocalPlayer then return false end
     if not LocalPlayer.Team or not player.Team then return true end
@@ -48,7 +47,6 @@ local function getClosestEnemy()
     return best
 end
 
--- ESP (sin cambios)
 local function updateESP()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr.Character then
@@ -70,7 +68,6 @@ local function updateESP()
     end
 end
 
--- Antena (sin cambios)
 local function createAntenna(plr)
     if not plr.Character or antennas[plr] then return end
     local head = plr.Character:FindFirstChild("Head")
@@ -126,7 +123,6 @@ local function updateAntennas()
     end
 end
 
--- Autoapuntado (sin cambios)
 local function aimbotUpdate()
     if not aimOn then return end
     local target = getClosestEnemy()
@@ -138,7 +134,6 @@ local function aimbotUpdate()
     end
 end
 
--- POV Circle (sin cambios)
 local povGui = nil
 local function updatePOVCircle()
     if povGui then
@@ -154,7 +149,6 @@ local function setPOVVisible(visible)
     if povGui then povGui.Enabled = visible end
 end
 
--- Anti-lag (sin cambios)
 local originalShadows
 local function setAntiLag(state)
     if state then
@@ -165,7 +159,6 @@ local function setAntiLag(state)
     end
 end
 
--- Reinicio de ronda (sin cambios)
 local function resetRound()
     local char = LocalPlayer.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
@@ -174,7 +167,7 @@ local function resetRound()
     end
 end
 
--- ==================== NUEVA INTERFAZ MODERNA (LO QUE PEDISTE) ====================
+-- ==================== NUEVA INTERFAZ (TODO LO QUE PEDISTE) ====================
 local function createInterface()
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
     local screenGui = Instance.new("ScreenGui")
@@ -182,7 +175,7 @@ local function createInterface()
     screenGui.ResetOnSpawn = false
     screenGui.Parent = playerGui
 
-    -- Botón central flotante (estilo Ring)
+    -- Botón central movible
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0, 70, 0, 70)
     toggleBtn.Position = UDim2.new(0.5, -35, 0.5, -35)
@@ -199,10 +192,10 @@ local function createInterface()
     btnCorner.CornerRadius = UDim.new(1, 0)
     btnCorner.Parent = toggleBtn
 
-    -- Panel central
+    -- Panel movible (más abajo)
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.new(0, 300, 0, 420)
-    panel.Position = UDim2.new(0.5, -150, 0.5, -210)
+    panel.Size = UDim2.new(0, 300, 0, 460)
+    panel.Position = UDim2.new(0.5, -150, 0.5, -180)  -- Más abajo
     panel.AnchorPoint = Vector2.new(0.5, 0.5)
     panel.BackgroundColor3 = Color3.fromRGB(22, 22, 35)
     panel.BackgroundTransparency = 0.05
@@ -224,13 +217,14 @@ local function createInterface()
     title.Font = Enum.Font.GothamBold
     title.Parent = panel
 
-    local function makeSectionButton(text, icon, y, callback)
+    -- Función para crear botones con color verde cuando está ON
+    local function makeSectionButton(text, icon, y, stateVar, callback)
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(0, 260, 0, 48)
         btn.Position = UDim2.new(0, 20, 0, y)
         btn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
         btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-        btn.Text = icon .. "   " .. text
+        btn.Text = icon .. "   " .. text .. " (OFF)"
         btn.TextSize = 16
         btn.Font = Enum.Font.GothamSemibold
         btn.BorderSizePixel = 0
@@ -240,39 +234,67 @@ local function createInterface()
         corner.CornerRadius = UDim.new(0, 12)
         corner.Parent = btn
 
-        btn.MouseButton1Click:Connect(callback)
+        local function updateButton()
+            if stateVar then
+                btn.BackgroundColor3 = Color3.fromRGB(0, 170, 80)  -- Verde
+                btn.Text = icon .. "   " .. text .. " (ON)"
+            else
+                btn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
+                btn.Text = icon .. "   " .. text .. " (OFF)"
+            end
+        end
+
+        updateButton()
+
+        btn.MouseButton1Click:Connect(function()
+            stateVar = not stateVar
+            updateButton()
+            callback()
+        end)
+
         return btn
     end
 
-    -- Secciones con iconos
-    makeSectionButton("ESP", "👁️", 60, function()
-        espOn = not espOn
-        updateESP()
+    -- Secciones
+    makeSectionButton("ESP", "👁️", 60, espOn, updateESP)
+    makeSectionButton("Aimbot", "🎯", 115, aimOn, function() setPOVVisible(aimOn) end)
+    makeSectionButton("Antena", "📡", 170, antennaOn, updateAntennas)
+    makeSectionButton("Auto Disparo", "🔫", 225, autoShootOn, function() end)
+    makeSectionButton("Anti-Lag", "⚡", 280, antiLagOn, function() setAntiLag(antiLagOn) end)
+    makeSectionButton("Reiniciar Ronda", "🔄", 335, false, resetRound)
+
+    -- Versión
+    local versionLabel = Instance.new("TextLabel")
+    versionLabel.Size = UDim2.new(1, 0, 0, 30)
+    versionLabel.Position = UDim2.new(0, 0, 1, -30)
+    versionLabel.BackgroundTransparency = 1
+    versionLabel.Text = "Versión 2.1 - by menajohan90-cell"
+    versionLabel.TextColor3 = Color3.fromRGB(100, 100, 120)
+    versionLabel.TextSize = 13
+    versionLabel.Font = Enum.Font.Gotham
+    versionLabel.Parent = panel
+
+    -- Botón Rejoin
+    local rejoinBtn = Instance.new("TextButton")
+    rejoinBtn.Size = UDim2.new(0, 260, 0, 40)
+    rejoinBtn.Position = UDim2.new(0, 20, 1, -75)
+    rejoinBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
+    rejoinBtn.Text = "🔄 Rejoin Server"
+    rejoinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    rejoinBtn.TextSize = 15
+    rejoinBtn.Font = Enum.Font.GothamBold
+    rejoinBtn.BorderSizePixel = 0
+    rejoinBtn.Parent = panel
+
+    local rejoinCorner = Instance.new("UICorner")
+    rejoinCorner.CornerRadius = UDim.new(0, 12)
+    rejoinCorner.Parent = rejoinBtn
+
+    rejoinBtn.MouseButton1Click:Connect(function()
+        game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
     end)
 
-    makeSectionButton("Aimbot", "🎯", 115, function()
-        aimOn = not aimOn
-        setPOVVisible(aimOn)
-    end)
-
-    makeSectionButton("Antena", "📡", 170, function()
-        antennaOn = not antennaOn
-        updateAntennas()
-    end)
-
-    makeSectionButton("Auto Disparo", "🔫", 225, function()
-        autoShootOn = not autoShootOn
-    end)
-
-    makeSectionButton("Anti-Lag", "⚡", 280, function()
-        antiLagOn = not antiLagOn
-        setAntiLag(antiLagOn)
-    end)
-
-    -- Botón Reiniciar Ronda
-    makeSectionButton("Reiniciar Ronda", "🔄", 335, resetRound)
-
-    -- Botón Cerrar
+    -- Botón cerrar
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 40, 0, 40)
     closeBtn.Position = UDim2.new(1, -50, 0, 8)
@@ -292,13 +314,66 @@ local function createInterface()
         panel.Visible = false
     end)
 
-    -- Abrir/Cerrar panel
+    -- Hacer el botón central movible
+    local dragging = false
+    local dragInput
+    local dragStart
+    local startPos
+
+    toggleBtn.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = toggleBtn.Position
+        end
+    end)
+
+    toggleBtn.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            toggleBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    -- Hacer el panel movible
+    local panelDragging = false
+    local panelDragStart
+    local panelStartPos
+
+    panel.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            panelDragging = true
+            panelDragStart = input.Position
+            panelStartPos = panel.Position
+        end
+    end)
+
+    panel.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            panelDragging = false
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if panelDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - panelDragStart
+            panel.Position = UDim2.new(panelStartPos.X.Scale, panelStartPos.X.Offset + delta.X, panelStartPos.Y.Scale, panelStartPos.Y.Offset + delta.Y)
+        end
+    end)
+
+    -- Abrir/Cerrar
     toggleBtn.MouseButton1Click:Connect(function()
         panel.Visible = not panel.Visible
     end)
 end
 
--- Crear círculo POV (sin cambios)
+-- Crear POV
 local function createPOV()
     local gui = Instance.new("ScreenGui")
     gui.Name = "POVCircle"
@@ -320,7 +395,7 @@ local function createPOV()
     setPOVVisible(false)
 end
 
--- Inicializar todo
+-- Inicializar
 local function start()
     createInterface()
     createPOV()
@@ -336,12 +411,7 @@ local function start()
 
     Players.PlayerRemoving:Connect(destroyAntenna)
 
-    LocalPlayer:GetPropertyChangedSignal("Team"):Connect(function()
-        if espOn then updateESP() end
-        if antennaOn then updateAntennas() end
-    end)
-
-    print("✅ Mod Menu cargado - Botón central activado")
+    print("✅ Mod Menu v2.1 cargado - Panel movible activado")
 end
 
 start()
