@@ -1,4 +1,4 @@
--- Script Mod Menu Mejorado - Versión 3.1 (Drag mejorado y panel movible por título)
+-- Script Mod Menu Mejorado - Versión 3.2 (Drag funcional, hitbox visual, sin eliminar partes)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -19,7 +19,7 @@ local aimFOV = 60
 local teamColor = Color3.fromRGB(0, 150, 255)
 local enemyColor = Color3.fromRGB(255, 0, 0)
 local antennas = {}
-local hitboxParts = {}
+local hitboxIndicators = {}  -- BillboardGui para hitbox visual
 
 -- ==================== FUNCIONES AUXILIARES ====================
 local function isEnemy(player)
@@ -48,20 +48,20 @@ local function getClosestEnemy()
     return best
 end
 
+-- Auto disparo: simula clic del mouse (más compatible)
 local function autoShoot()
     if not autoShootOn then return end
-    local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
-    if tool then
-        if tool:FindFirstChild("Activate") then
-            tool:Activate()
-        elseif tool:FindFirstChild("Fire") then
-            tool:Fire()
-        elseif tool:FindFirstChild("RemoteEvent") then
-            tool.RemoteEvent:FireServer()
-        else
-            local mouse = LocalPlayer:GetMouse()
-            if mouse then
-                mouse.Button1Click:Fire()
+    local mouse = LocalPlayer:GetMouse()
+    if mouse then
+        -- Simular clic izquierdo
+        mouse.Button1Click:Fire()
+        -- Alternativa: si hay herramienta, activarla
+        local tool = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")
+        if tool then
+            if tool:FindFirstChild("Activate") then
+                tool:Activate()
+            elseif tool:FindFirstChild("RemoteEvent") then
+                tool.RemoteEvent:FireServer()
             end
         end
     end
@@ -225,70 +225,75 @@ local function toggleNoCooldown(state)
     end
 end
 
--- ==================== HITBOX EXPANDER ====================
-local function createHitbox(plr)
-    if not plr.Character or hitboxParts[plr] then return end
+-- ==================== HITBOX VISUAL + REDIRECCIÓN ====================
+-- Crea un BillboardGui circular alrededor del enemigo (visual)
+local function createHitboxIndicator(plr)
+    if not plr.Character or hitboxIndicators[plr] then return end
     local torso = plr.Character:FindFirstChild("UpperTorso") or plr.Character:FindFirstChild("Torso") or plr.Character:FindFirstChild("HumanoidRootPart")
     if not torso then return end
 
-    local sphere = Instance.new("Part")
-    sphere.Name = "HitboxExpander"
-    sphere.Size = Vector3.new(8, 8, 8)
-    sphere.Shape = Enum.PartType.Ball
-    sphere.Material = Enum.Material.Neon
-    sphere.Color = isEnemy(plr) and enemyColor or teamColor
-    sphere.Transparency = 0.5
-    sphere.CanCollide = false
-    sphere.Anchored = true
-    sphere.Parent = plr.Character
+    local bill = Instance.new("BillboardGui")
+    bill.Size = UDim2.new(0, 200, 0, 200)  -- tamaño del círculo
+    bill.StudsOffset = Vector3.new(0, 0, 0)
+    bill.AlwaysOnTop = true
+    bill.Parent = torso
 
-    local weld = Instance.new("Weld")
-    weld.Part0 = torso
-    weld.Part1 = sphere
-    weld.C0 = CFrame.new(0, 0, 0)
-    weld.Parent = sphere
+    local circle = Instance.new("Frame")
+    circle.Size = UDim2.new(1, 0, 1, 0)
+    circle.BackgroundTransparency = 0.6
+    circle.BackgroundColor3 = isEnemy(plr) and enemyColor or teamColor
+    circle.BorderSizePixel = 2
+    circle.BorderColor3 = Color3.fromRGB(255, 255, 255)
+    local uic = Instance.new("UICorner")
+    uic.CornerRadius = UDim.new(1, 0)
+    uic.Parent = circle
+    circle.Parent = bill
 
-    hitboxParts[plr] = sphere
+    hitboxIndicators[plr] = bill
 end
 
-local function destroyHitbox(plr)
-    if hitboxParts[plr] then
-        hitboxParts[plr]:Destroy()
-        hitboxParts[plr] = nil
+local function destroyHitboxIndicator(plr)
+    if hitboxIndicators[plr] then
+        hitboxIndicators[plr]:Destroy()
+        hitboxIndicators[plr] = nil
     end
 end
 
 local function updateHitboxes()
     if not hitboxOn then
-        for plr, _ in pairs(hitboxParts) do destroyHitbox(plr) end
+        for plr, _ in pairs(hitboxIndicators) do destroyHitboxIndicator(plr) end
         return
     end
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and isEnemy(plr) then
-            createHitbox(plr)
+            createHitboxIndicator(plr)
         else
-            destroyHitbox(plr)
+            destroyHitboxIndicator(plr)
         end
     end
 end
 
+-- Redirección de balas: detecta balas que estén cerca del torso del enemigo (radio 4)
 local function redirectBullets()
     if not hitboxOn then return end
     for _, bullet in ipairs(workspace:GetDescendants()) do
         if bullet:IsA("Part") and bullet:FindFirstChild("Velocity") and not bullet:IsDescendantOf(LocalPlayer.Character) then
             local vel = bullet.Velocity
             if vel.Magnitude > 50 then
-                for plr, sphere in pairs(hitboxParts) do
-                    if sphere and sphere:IsDescendantOf(workspace) then
-                        local distance = (bullet.Position - sphere.Position).Magnitude
-                        if distance <= sphere.Size.X / 2 then
-                            local target = plr.Character and plr.Character:FindFirstChild("Head")
-                            if target then
-                                local direction = (target.Position - bullet.Position).Unit
-                                bullet.Velocity = direction * vel.Magnitude
-                                bullet.CFrame = CFrame.new(bullet.Position, target.Position)
+                for plr, indicator in pairs(hitboxIndicators) do
+                    if indicator and indicator:IsDescendantOf(workspace) then
+                        local torso = indicator.Parent
+                        if torso and torso.Parent then
+                            local distance = (bullet.Position - torso.Position).Magnitude
+                            if distance <= 4 then  -- radio de la hitbox visual
+                                local target = plr.Character and plr.Character:FindFirstChild("Head")
+                                if target then
+                                    local direction = (target.Position - bullet.Position).Unit
+                                    bullet.Velocity = direction * vel.Magnitude
+                                    bullet.CFrame = CFrame.new(bullet.Position, target.Position)
+                                end
+                                break
                             end
-                            break
                         end
                     end
                 end
@@ -297,7 +302,7 @@ local function redirectBullets()
     end
 end
 
--- ==================== INTERFAZ CON DRAG MEJORADO ====================
+-- ==================== INTERFAZ CON DRAG FUNCIONAL ====================
 local function createInterface()
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
     local screenGui = Instance.new("ScreenGui")
@@ -305,7 +310,7 @@ local function createInterface()
     screenGui.ResetOnSpawn = false
     screenGui.Parent = playerGui
 
-    -- Botón central (arrastrable desde cualquier parte)
+    -- Botón central
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0, 70, 0, 70)
     toggleBtn.Position = UDim2.new(0.5, -35, 0.5, -35)
@@ -450,14 +455,13 @@ local function createInterface()
     versionLabel.Size = UDim2.new(1, 0, 0, 30)
     versionLabel.Position = UDim2.new(0, 0, 1, -35)
     versionLabel.BackgroundTransparency = 1
-    versionLabel.Text = "Versión 3.1"
+    versionLabel.Text = "Versión 3.2"
     versionLabel.TextColor3 = Color3.fromRGB(100, 100, 120)
     versionLabel.TextSize = 13
     versionLabel.Font = Enum.Font.Gotham
     versionLabel.Parent = panel
 
-    -- ==================== DRAG MEJORADO ====================
-    -- Drag para la bolita
+    -- ==================== DRAG MEJORADO (funcional) ====================
     local draggingBtn = false
     local dragStartBtn, startPosBtn
 
@@ -475,7 +479,6 @@ local function createInterface()
         end
     end)
 
-    -- Drag para el panel (SOLO por la barra de título)
     local draggingPanel = false
     local dragStartPanel, startPosPanel
 
@@ -493,7 +496,6 @@ local function createInterface()
         end
     end)
 
-    -- Efecto visual en la barra de título
     titleBar.MouseEnter:Connect(function()
         titleBar.BackgroundTransparency = 0.2
     end)
@@ -536,10 +538,10 @@ local function start()
 
     Players.PlayerRemoving:Connect(function(p)
         destroyAntenna(p)
-        destroyHitbox(p)
+        destroyHitboxIndicator(p)
     end)
 
-    print("✅ Mod Menu v3.1 cargado - Drag mejorado (bolita + panel por título)")
+    print("✅ Mod Menu v3.2 cargado - Drag funcional, hitbox visual, sin eliminar partes")
 end
 
 start()
