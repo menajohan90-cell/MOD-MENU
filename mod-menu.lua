@@ -1,4 +1,4 @@
--- Script Mod Menu Mejorado - Versión 2.3 (ESP arreglado + Antena mejorada + Rejoin solo para Jxmena67)
+-- Script Mod Menu Mejorado - Versión 2.5 (No Cooldown agregado)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -12,13 +12,14 @@ local aimOn = false
 local antennaOn = false
 local autoShootOn = false
 local antiLagOn = false
+local noCooldownOn = false
 local aimFOV = 60
 
 local teamColor = Color3.fromRGB(0, 150, 255)
 local enemyColor = Color3.fromRGB(255, 0, 0)
 local antennas = {}
 
--- ==================== FUNCIONES ====================
+-- ==================== FUNCIONES ORIGINALES ====================
 local function isEnemy(player)
     if player == LocalPlayer then return false end
     if not LocalPlayer.Team or not player.Team then return true end
@@ -45,7 +46,6 @@ local function getClosestEnemy()
     return best
 end
 
--- ESP Arreglado
 local function updateESP()
     for _, plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character then
@@ -55,13 +55,13 @@ local function updateESP()
                     h = Instance.new("Highlight")
                     h.Name = "ESP_Highlight"
                     h.Adornee = plr.Character
-                    h.FillTransparency = 0.5
+                    h.FillTransparency = 0.4
                     h.OutlineTransparency = 0
                     h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
                     h.Parent = plr.Character
                 end
                 h.FillColor = isEnemy(plr) and enemyColor or teamColor
-                h.OutlineColor = h.FillColor
+                h.OutlineColor = Color3.fromRGB(255, 255, 255)
             elseif h then
                 h:Destroy()
             end
@@ -69,24 +69,22 @@ local function updateESP()
     end
 end
 
--- Antena Mejorada (cuadro + raya vertical)
 local function createAntenna(plr)
     if not plr.Character or antennas[plr] then return end
     local head = plr.Character:FindFirstChild("Head")
     if not head then return end
 
     local bill = Instance.new("BillboardGui")
-    bill.Size = UDim2.new(0, 80, 0, 70)
-    bill.StudsOffset = Vector3.new(0, 3, 0)
+    bill.Size = UDim2.new(0, 80, 0, 80)
+    bill.StudsOffset = Vector3.new(0, 3.5, 0)
     bill.AlwaysOnTop = true
     bill.Parent = head
 
-    -- Cuadro en el cuerpo
     local box = Instance.new("Frame")
-    box.Size = UDim2.new(0, 65, 0, 35)
-    box.Position = UDim2.new(0.5, -32.5, 0, 25)
+    box.Size = UDim2.new(0, 70, 0, 40)
+    box.Position = UDim2.new(0.5, -35, 0, 30)
     box.BackgroundColor3 = isEnemy(plr) and enemyColor or teamColor
-    box.BackgroundTransparency = 0.4
+    box.BackgroundTransparency = 0.35
     box.BorderSizePixel = 2
     box.BorderColor3 = Color3.fromRGB(255, 255, 255)
     box.Parent = bill
@@ -100,10 +98,9 @@ local function createAntenna(plr)
     label.Font = Enum.Font.GothamBold
     label.Parent = box
 
-    -- Raya vertical (línea)
     local line = Instance.new("Frame")
-    line.Size = UDim2.new(0, 2, 0, 25)
-    line.Position = UDim2.new(0.5, -1, 0, 0)
+    line.Size = UDim2.new(0, 3, 0, 35)
+    line.Position = UDim2.new(0.5, -1.5, 0, -5)
     line.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     line.BorderSizePixel = 0
     line.Parent = bill
@@ -124,11 +121,7 @@ local function updateAntennas()
         return
     end
     for _, plr in ipairs(Players:GetPlayers()) do
-        if plr ~= LocalPlayer then 
-            createAntenna(plr) 
-        else 
-            destroyAntenna(plr) 
-        end
+        if plr ~= LocalPlayer then createAntenna(plr) else destroyAntenna(plr) end
     end
 end
 
@@ -158,6 +151,44 @@ local function setAntiLag(state)
     end
 end
 
+-- ==================== NUEVA FUNCIÓN: NO COOLDOWN ====================
+local noCooldownConnection = nil
+
+local function toggleNoCooldown(state)
+    noCooldownOn = state
+
+    if state then
+        if noCooldownConnection then noCooldownConnection:Disconnect() end
+        
+        noCooldownConnection = RunService.Heartbeat:Connect(function()
+            if LocalPlayer.Character then
+                local tool = LocalPlayer.Character:FindFirstChildOfClass("Tool")
+                if tool then
+                    local handle = tool:FindFirstChild("Handle") or tool:FindFirstChildWhichIsA("BasePart")
+                    if handle then
+                        -- Intento de remover cooldown en muchas herramientas
+                        for _, v in pairs(tool:GetDescendants()) do
+                            if v:IsA("NumberValue") or v:IsA("IntValue") then
+                                if v.Name:lower():find("cooldown") or v.Name:lower():find("delay") or v.Name:lower():find("reload") then
+                                    v.Value = 0
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end)
+        
+        print("No Cooldown Activado")
+    else
+        if noCooldownConnection then
+            noCooldownConnection:Disconnect()
+            noCooldownConnection = nil
+        end
+        print("No Cooldown Desactivado")
+    end
+end
+
 -- ==================== INTERFAZ ====================
 local function createInterface()
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -166,7 +197,6 @@ local function createInterface()
     screenGui.ResetOnSpawn = false
     screenGui.Parent = playerGui
 
-    -- Botón central
     local toggleBtn = Instance.new("TextButton")
     toggleBtn.Size = UDim2.new(0, 70, 0, 70)
     toggleBtn.Position = UDim2.new(0.5, -35, 0.5, -35)
@@ -183,10 +213,9 @@ local function createInterface()
     btnCorner.CornerRadius = UDim.new(1, 0)
     btnCorner.Parent = toggleBtn
 
-    -- Panel
     local panel = Instance.new("Frame")
-    panel.Size = UDim2.new(0, 300, 0, 420)
-    panel.Position = UDim2.new(0.5, -150, 0.5, -180)
+    panel.Size = UDim2.new(0, 300, 0, 450)
+    panel.Position = UDim2.new(0.5, -150, 0.5, -200)
     panel.AnchorPoint = Vector2.new(0.5, 0.5)
     panel.BackgroundColor3 = Color3.fromRGB(22, 22, 35)
     panel.BackgroundTransparency = 0.05
@@ -238,7 +267,7 @@ local function createInterface()
         btn.MouseButton1Click:Connect(function()
             stateVar = not stateVar
             updateButton()
-            if callback then callback() end
+            if callback then callback(stateVar) end
         end)
         return btn
     end
@@ -247,13 +276,14 @@ local function createInterface()
     makeSectionButton("Aimbot", "🎯", 115, aimOn, function() setPOVVisible(aimOn) end)
     makeSectionButton("Antena", "📡", 170, antennaOn, updateAntennas)
     makeSectionButton("Auto Disparo", "🔫", 225, autoShootOn, nil)
-    makeSectionButton("Anti-Lag", "⚡", 280, antiLagOn, function() setAntiLag(antiLagOn) end)
+    makeSectionButton("Anti-Lag", "⚡", 280, antiLagOn, function(state) setAntiLag(state) end)
+    makeSectionButton("No Cooldown", "♾️", 335, noCooldownOn, toggleNoCooldown)   -- Nuevo botón
 
-    -- Rejoin SOLO para Jxmena67
+    -- Rejoin solo para Jxmena67
     if LocalPlayer.Name == "Jxmena67" then
         local rejoinBtn = Instance.new("TextButton")
         rejoinBtn.Size = UDim2.new(0, 260, 0, 40)
-        rejoinBtn.Position = UDim2.new(0, 20, 0, 340)
+        rejoinBtn.Position = UDim2.new(0, 20, 0, 390)
         rejoinBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
         rejoinBtn.Text = "🔄 Rejoin Server"
         rejoinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -271,12 +301,11 @@ local function createInterface()
         end)
     end
 
-    -- Versión
     local versionLabel = Instance.new("TextLabel")
     versionLabel.Size = UDim2.new(1, 0, 0, 30)
     versionLabel.Position = UDim2.new(0, 0, 1, -35)
     versionLabel.BackgroundTransparency = 1
-    versionLabel.Text = "Versión 2.3"
+    versionLabel.Text = "Versión 2.5"
     versionLabel.TextColor3 = Color3.fromRGB(100, 100, 120)
     versionLabel.TextSize = 13
     versionLabel.Font = Enum.Font.Gotham
@@ -302,11 +331,10 @@ local function createInterface()
         panel.Visible = false
     end)
 
-    -- Drag Mejorado (mantener presionado)
+    -- Drag (mantener clic)
     local draggingBtn, draggingPanel = false, false
     local dragStartBtn, startPosBtn, dragStartPanel, startPosPanel
 
-    -- Drag Botón
     toggleBtn.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             draggingBtn = true
@@ -319,7 +347,6 @@ local function createInterface()
         if input.UserInputType == Enum.UserInputType.MouseButton1 then draggingBtn = false end
     end)
 
-    -- Drag Panel
     panel.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             draggingPanel = true
@@ -375,7 +402,7 @@ local function start()
 
     Players.PlayerAdded:Connect(function(p)
         p.CharacterAdded:Connect(function()
-            task.wait(0.5)
+            task.wait(0.8)
             if espOn then updateESP() end
             if antennaOn then updateAntennas() end
         end)
@@ -383,7 +410,7 @@ local function start()
 
     Players.PlayerRemoving:Connect(destroyAntenna)
 
-    print("✅ Mod Menu v2.3 cargado correctamente")
+    print("✅ Mod Menu v2.5 cargado - No Cooldown agregado")
 end
 
 start()
