@@ -1,4 +1,4 @@
--- Script Mod Menu Mejorado - Versión 2.1 (Panel movible + Verde ON)
+-- Script Mod Menu Mejorado - Versión 2.2 (Drag Mejorado + Verde ON)
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -14,13 +14,11 @@ local autoShootOn = false
 local antiLagOn = false
 local aimFOV = 60
 
--- Colores
 local teamColor = Color3.fromRGB(0, 150, 255)
 local enemyColor = Color3.fromRGB(255, 0, 0)
-
 local antennas = {}
 
--- ==================== FUNCIONES ORIGINALES (NO SE TOCARON) ====================
+-- ==================== FUNCIONES ORIGINALES ====================
 local function isEnemy(player)
     if player == LocalPlayer then return false end
     if not LocalPlayer.Team or not player.Team then return true end
@@ -135,16 +133,6 @@ local function aimbotUpdate()
 end
 
 local povGui = nil
-local function updatePOVCircle()
-    if povGui then
-        local circ = povGui:FindFirstChild("Circle")
-        if circ then
-            circ.Size = UDim2.new(0, aimFOV * 2, 0, aimFOV * 2)
-            circ.Position = UDim2.new(0.5, -aimFOV, 0.5, -aimFOV)
-        end
-    end
-end
-
 local function setPOVVisible(visible)
     if povGui then povGui.Enabled = visible end
 end
@@ -163,11 +151,10 @@ local function resetRound()
     local char = LocalPlayer.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
         char.HumanoidRootPart.CFrame = CFrame.new(0, 10, 0)
-        print("Ronda reiniciada")
     end
 end
 
--- ==================== NUEVA INTERFAZ (TODO LO QUE PEDISTE) ====================
+-- ==================== INTERFAZ CON DRAG MEJORADO ====================
 local function createInterface()
     local playerGui = LocalPlayer:WaitForChild("PlayerGui")
     local screenGui = Instance.new("ScreenGui")
@@ -195,7 +182,7 @@ local function createInterface()
     -- Panel movible (más abajo)
     local panel = Instance.new("Frame")
     panel.Size = UDim2.new(0, 300, 0, 460)
-    panel.Position = UDim2.new(0.5, -150, 0.5, -180)  -- Más abajo
+    panel.Position = UDim2.new(0.5, -150, 0.5, -180)
     panel.AnchorPoint = Vector2.new(0.5, 0.5)
     panel.BackgroundColor3 = Color3.fromRGB(22, 22, 35)
     panel.BackgroundTransparency = 0.05
@@ -217,7 +204,6 @@ local function createInterface()
     title.Font = Enum.Font.GothamBold
     title.Parent = panel
 
-    -- Función para crear botones con color verde cuando está ON
     local function makeSectionButton(text, icon, y, stateVar, callback)
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(0, 260, 0, 48)
@@ -236,7 +222,7 @@ local function createInterface()
 
         local function updateButton()
             if stateVar then
-                btn.BackgroundColor3 = Color3.fromRGB(0, 170, 80)  -- Verde
+                btn.BackgroundColor3 = Color3.fromRGB(0, 170, 80)   -- Verde cuando ON
                 btn.Text = icon .. "   " .. text .. " (ON)"
             else
                 btn.BackgroundColor3 = Color3.fromRGB(40, 40, 60)
@@ -249,26 +235,24 @@ local function createInterface()
         btn.MouseButton1Click:Connect(function()
             stateVar = not stateVar
             updateButton()
-            callback()
+            if callback then callback() end
         end)
-
         return btn
     end
 
-    -- Secciones
     makeSectionButton("ESP", "👁️", 60, espOn, updateESP)
     makeSectionButton("Aimbot", "🎯", 115, aimOn, function() setPOVVisible(aimOn) end)
     makeSectionButton("Antena", "📡", 170, antennaOn, updateAntennas)
-    makeSectionButton("Auto Disparo", "🔫", 225, autoShootOn, function() end)
+    makeSectionButton("Auto Disparo", "🔫", 225, autoShootOn, nil)
     makeSectionButton("Anti-Lag", "⚡", 280, antiLagOn, function() setAntiLag(antiLagOn) end)
     makeSectionButton("Reiniciar Ronda", "🔄", 335, false, resetRound)
 
     -- Versión
     local versionLabel = Instance.new("TextLabel")
     versionLabel.Size = UDim2.new(1, 0, 0, 30)
-    versionLabel.Position = UDim2.new(0, 0, 1, -30)
+    versionLabel.Position = UDim2.new(0, 0, 1, -35)
     versionLabel.BackgroundTransparency = 1
-    versionLabel.Text = "Versión 2.1 - by menajohan90-cell"
+    versionLabel.Text = "Versión 2.2"
     versionLabel.TextColor3 = Color3.fromRGB(100, 100, 120)
     versionLabel.TextSize = 13
     versionLabel.Font = Enum.Font.Gotham
@@ -277,7 +261,7 @@ local function createInterface()
     -- Botón Rejoin
     local rejoinBtn = Instance.new("TextButton")
     rejoinBtn.Size = UDim2.new(0, 260, 0, 40)
-    rejoinBtn.Position = UDim2.new(0, 20, 1, -75)
+    rejoinBtn.Position = UDim2.new(0, 20, 1, -80)
     rejoinBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60)
     rejoinBtn.Text = "🔄 Rejoin Server"
     rejoinBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -294,7 +278,7 @@ local function createInterface()
         game:GetService("TeleportService"):Teleport(game.PlaceId, LocalPlayer)
     end)
 
-    -- Botón cerrar
+    -- Botón Cerrar
     local closeBtn = Instance.new("TextButton")
     closeBtn.Size = UDim2.new(0, 40, 0, 40)
     closeBtn.Position = UDim2.new(1, -50, 0, 8)
@@ -314,66 +298,63 @@ local function createInterface()
         panel.Visible = false
     end)
 
-    -- Hacer el botón central movible
-    local dragging = false
-    local dragInput
-    local dragStart
-    local startPos
+    -- ==================== DRAG MEJORADO (Mantener presionado) ====================
+
+    -- Drag para el botón central
+    local draggingBtn = false
+    local dragStartBtn, startPosBtn
 
     toggleBtn.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPos = toggleBtn.Position
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            draggingBtn = true
+            dragStartBtn = input.Position
+            startPosBtn = toggleBtn.Position
         end
     end)
 
     toggleBtn.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = false
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            draggingBtn = false
         end
     end)
 
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            toggleBtn.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-
-    -- Hacer el panel movible
-    local panelDragging = false
-    local panelDragStart
-    local panelStartPos
+    -- Drag para el panel
+    local draggingPanel = false
+    local dragStartPanel, startPosPanel
 
     panel.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            panelDragging = true
-            panelDragStart = input.Position
-            panelStartPos = panel.Position
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            draggingPanel = true
+            dragStartPanel = input.Position
+            startPosPanel = panel.Position
         end
     end)
 
     panel.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            panelDragging = false
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            draggingPanel = false
         end
     end)
 
     UserInputService.InputChanged:Connect(function(input)
-        if panelDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - panelDragStart
-            panel.Position = UDim2.new(panelStartPos.X.Scale, panelStartPos.X.Offset + delta.X, panelStartPos.Y.Scale, panelStartPos.Y.Offset + delta.Y)
+        if draggingBtn and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStartBtn
+            toggleBtn.Position = UDim2.new(startPosBtn.X.Scale, startPosBtn.X.Offset + delta.X, startPosBtn.Y.Scale, startPosBtn.Y.Offset + delta.Y)
+        end
+
+        if draggingPanel and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - dragStartPanel
+            panel.Position = UDim2.new(startPosPanel.X.Scale, startPosPanel.X.Offset + delta.X, startPosPanel.Y.Scale, startPosPanel.Y.Offset + delta.Y)
         end
     end)
 
-    -- Abrir/Cerrar
+    -- Abrir / Cerrar panel
     toggleBtn.MouseButton1Click:Connect(function()
         panel.Visible = not panel.Visible
     end)
 end
 
--- Crear POV
+-- POV Circle
 local function createPOV()
     local gui = Instance.new("ScreenGui")
     gui.Name = "POVCircle"
@@ -411,7 +392,7 @@ local function start()
 
     Players.PlayerRemoving:Connect(destroyAntenna)
 
-    print("✅ Mod Menu v2.1 cargado - Panel movible activado")
+    print("✅ Mod Menu v2.2 cargado - Drag mejorado activado")
 end
 
 start()
