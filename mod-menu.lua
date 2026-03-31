@@ -1,4 +1,4 @@
--- MOD MENU PRO LIMPIO COMPLETO
+-- MOD MENU PRO ESTABLE + FIX BUGS
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -7,9 +7,9 @@ local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- ==================== CONFIG ====================
+-- ================= CONFIG =================
 local hologramColor = Color3.fromRGB(0,255,200)
-local hitboxMaxSize = 40
+local hitboxMaxSize = 35
 local hitboxColor = Color3.fromRGB(255,0,0)
 
 -- Toggles
@@ -22,7 +22,38 @@ local hitboxOn = false
 
 local bodyBoxes = {}
 
--- ==================== HOLOGRAMA ====================
+-- ================= FIX GENERAL =================
+local function resetAll()
+    espOn = false
+    bodyBoxOn = false
+    aimAssist = false
+    triggerAssist = false
+    recoilControl = false
+    hitboxOn = false
+
+    -- restaurar personajes
+    for _,plr in ipairs(Players:GetPlayers()) do
+        if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local root = plr.Character.HumanoidRootPart
+            root.Size = Vector3.new(2,2,1)
+            root.Transparency = 1
+            root.CanCollide = true
+        end
+
+        if plr.Character then
+            local h = plr.Character:FindFirstChild("HL")
+            if h then h:Destroy() end
+        end
+    end
+
+    -- borrar bodyboxes
+    for _,v in pairs(bodyBoxes) do v:Destroy() end
+    bodyBoxes = {}
+
+    print("🧹 TODO RESETEADO")
+end
+
+-- ================= HOLOGRAMA =================
 local function updateHologram()
     for _,plr in ipairs(Players:GetPlayers()) do
         if plr ~= LocalPlayer and plr.Character then
@@ -47,7 +78,7 @@ local function updateHologram()
     end
 end
 
--- ==================== BODY BOX ====================
+-- ================= BODY BOX =================
 local function createBodyBox(plr)
     if bodyBoxes[plr] then return end
     local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
@@ -77,7 +108,7 @@ local function updateBodyBoxes()
     end
 end
 
--- ==================== AIM ASSIST ====================
+-- ================= AIM ASSIST =================
 local function aimAssistFunc()
     if not aimAssist then return end
 
@@ -101,35 +132,34 @@ local function aimAssistFunc()
         local head = closest.Character.Head
         Camera.CFrame = Camera.CFrame:Lerp(
             CFrame.new(Camera.CFrame.Position,head.Position),
-            0.1
+            0.08
         )
     end
 end
 
--- ==================== TRIGGER ====================
+-- ================= TRIGGER FIX =================
 RunService.RenderStepped:Connect(function()
     if triggerAssist then
         local mouse = LocalPlayer:GetMouse()
-        local t = mouse.Target
-        if t and t.Parent:FindFirstChild("Humanoid") then
-            mouse1press()
-            task.wait(0.05)
-            mouse1release()
+        local target = mouse.Target
+
+        if target and target.Parent:FindFirstChild("Humanoid") then
+            mouse1click() -- FIX (antes bug)
         end
     end
 end)
 
--- ==================== RECOIL CONTROL ====================
+-- ================= RECOIL =================
 RunService.RenderStepped:Connect(function()
     if recoilControl then
         Camera.CFrame = Camera.CFrame:Lerp(
             CFrame.new(Camera.CFrame.Position, Camera.CFrame.Position + Camera.CFrame.LookVector),
-            0.08
+            0.05
         )
     end
 end)
 
--- ==================== HITBOX ====================
+-- ================= HITBOX =================
 local function toggleHitbox(state)
     hitboxOn = state
 
@@ -148,26 +178,15 @@ local function toggleHitbox(state)
                         end
                     end
                 end
-                task.wait(0.2)
+                task.wait(0.3)
             end
         end)
     end
 end
 
--- ==================== FOV ====================
-local fov = Drawing.new("Circle")
-fov.Radius = 150
-fov.Color = Color3.fromRGB(0,255,200)
-fov.Thickness = 2
-fov.Filled = false
-
-RunService.RenderStepped:Connect(function()
-    fov.Position = Vector2.new(Camera.ViewportSize.X/2,Camera.ViewportSize.Y/2)
-end)
-
--- ==================== UI ====================
+-- ================= UI =================
 local function createInterface()
-    local gui = Instance.new("ScreenGui", LocalPlayer:WaitForChild("PlayerGui"))
+    local gui = Instance.new("ScreenGui", LocalPlayer.PlayerGui)
 
     local btn = Instance.new("TextButton", gui)
     btn.Size = UDim2.new(0,60,0,60)
@@ -175,18 +194,24 @@ local function createInterface()
     btn.Text = "⚙️"
 
     local panel = Instance.new("Frame", gui)
-    panel.Size = UDim2.new(0,300,0,400)
-    panel.Position = UDim2.new(0.5,-150,0.5,-200)
+    panel.Size = UDim2.new(0,320,0,420)
+    panel.Position = UDim2.new(0.5,-160,0.5,-210)
     panel.Visible = false
 
-    btn.MouseButton1Click:Connect(function()
-        panel.Visible = not panel.Visible
+    local close = Instance.new("TextButton", panel)
+    close.Size = UDim2.new(0,40,0,40)
+    close.Position = UDim2.new(1,-45,0,5)
+    close.Text = "X"
+    close.BackgroundColor3 = Color3.fromRGB(200,50,50)
+
+    close.MouseButton1Click:Connect(function()
+        panel.Visible = false
     end)
 
     local function makeButton(name,y,callback)
         local b = Instance.new("TextButton", panel)
         b.Size = UDim2.new(0,260,0,40)
-        b.Position = UDim2.new(0,20,0,y)
+        b.Position = UDim2.new(0,30,0,y)
         b.Text = name.." OFF"
 
         local state=false
@@ -197,17 +222,36 @@ local function createInterface()
         end)
     end
 
-    makeButton("Holograma",20,function(v) espOn=v updateHologram() end)
-    makeButton("BodyBox",70,function(v) bodyBoxOn=v end)
-    makeButton("Aim Assist",120,function(v) aimAssist=v end)
-    makeButton("Trigger",170,function(v) triggerAssist=v end)
-    makeButton("Recoil",220,function(v) recoilControl=v end)
-    makeButton("Hitbox",270,toggleHitbox)
+    makeButton("Holograma",50,function(v) espOn=v updateHologram() end)
+    makeButton("BodyBox",100,function(v) bodyBoxOn=v end)
+    makeButton("Aim Assist",150,function(v) aimAssist=v end)
+    makeButton("Trigger",200,function(v) triggerAssist=v end)
+    makeButton("Recoil",250,function(v) recoilControl=v end)
+    makeButton("Hitbox",300,toggleHitbox)
+
+    -- 🧹 BOTÓN RESET
+    local reset = Instance.new("TextButton", panel)
+    reset.Size = UDim2.new(0,260,0,40)
+    reset.Position = UDim2.new(0,30,0,350)
+    reset.Text = "RESET TODO"
+    reset.BackgroundColor3 = Color3.fromRGB(180,50,50)
+
+    reset.MouseButton1Click:Connect(resetAll)
+
+    btn.MouseButton1Click:Connect(function()
+        panel.Visible = not panel.Visible
+    end)
+
+    UserInputService.InputBegan:Connect(function(i)
+        if i.KeyCode == Enum.KeyCode.RightShift then
+            panel.Visible = not panel.Visible
+        end
+    end)
 end
 
--- ==================== START ====================
+-- ================= START =================
 createInterface()
 RunService.RenderStepped:Connect(aimAssistFunc)
 RunService.Heartbeat:Connect(updateBodyBoxes)
 
-print("✅ MOD MENU PRO LIMPIO CARGADO")
+print("✅ MENU PRO ESTABLE CARGADO (SIN BUG)")
